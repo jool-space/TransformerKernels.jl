@@ -29,10 +29,6 @@ Compute `PD` pair features from the per-position feature values of one
 host and tiles on the device, and broadcasting lifts the same definition to
 both. `PD` must equal `size(pair_proj, 2)` of the [`PairFeatureScore`](@ref).
 
-Integer exponents don't compile on tiles (`x .^ 2` hits a `literal_pow`
-`Ref(^)` construction Tile IR can't emit; runtime Int exponents miscompile in
-`power_by_squaring`) — write `x .^ 2f0` or `x .* x`.
-
 NO generic fallback method on purpose: an `error("…\$(typeof(op))…")` fallback
 drags vararg `string` MethodInstances into device-code inference, which
 cuTile's compiler cache cannot handle (lattice error on `Vararg` argtypes).
@@ -43,11 +39,12 @@ function pair_feature end
 """
     PairFeatureScore(op, q_features, k_features, pair_proj)
 
-ScoreMod adding a per-head projection of [`pair_feature`](@ref) outputs to the
-attention scores. `q_features :: (F, SeqLen_Q, Batch)`,
-`k_features :: (F, SeqLen_K, Batch)`, `pair_proj :: (Heads, PD)`.
-Features are indexed by LOCAL query position (`input_pos` does not shift them),
-matching `BiasScore`.
+Adds a per-head projection of [`pair_feature`](@ref) outputs to the scores.
+Features are indexed by local query position (`input_pos` does not shift them).
+
+  * `q_features`: `(F, SeqLen_Q, Batch)`
+  * `k_features`: `(F, SeqLen_K, Batch)`
+  * `pair_proj`: `(Heads, PD)`
 """
 struct PairFeatureScore{F, PD, Op, AQ, AK, P} <: ScoreMod
     nfeat::Val{F}       # feature rows F, static so device loops unroll
@@ -103,15 +100,14 @@ end
 """
     ∇pair_feature(op, qvals, kvals, dphi::NTuple{PD}) -> (dq, dk)
 
-VJP of [`pair_feature`](@ref): given upstream cotangents `dphi` for the `PD`
-pair features, return cotangent tuples for `qvals` and `kvals` (length `F`
-each). Write it in the same broadcast-generic style as `pair_feature`; each
-entry must be a broadcast RESULT involving the inputs (write `0f0 .* qvals[f]`
-for a zero gradient, not a bare scalar) so the kernel can axis-reduce it.
+VJP of [`pair_feature`](@ref): given cotangents `dphi` for the `PD` pair
+features, return cotangent tuples for `qvals` and `kvals` (length `F` each).
+Write it in the same broadcast style as `pair_feature`; each entry must be a
+broadcast result involving the inputs (`0f0 .* qvals[f]` for a zero gradient,
+not a bare scalar).
 
-Only required when the gradient shadow carries feature arrays —
-`grad_shadow(m; feature_grads = true)`. Projection gradients (`∂pair_proj`)
-never need it.
+Only required with `grad_shadow(m; feature_grads = true)`; projection
+gradients never need it.
 """
 function ∇pair_feature end
 

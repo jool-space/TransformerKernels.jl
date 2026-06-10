@@ -88,9 +88,7 @@ const SOFTMAX_STREAM_TILE = 1024
 """
     softmax!(Y, X)
 
-Numerically stable softmax over each column of `X`. Columns up to 4096
-elements run in a single tile; longer columns stream in two passes (online
-max/sum, then normalize).
+Numerically stable softmax over each column of `X`.
 """
 function softmax!(Y::AbstractMatrix, X::AbstractMatrix)
     M, N = size(X)
@@ -105,8 +103,7 @@ end
 """
     ∇softmax!(X̄, Ȳ, Y)
 
-Backward of [`softmax!`](@ref), from the forward OUTPUT `Y`:
-`X̄ = Y .* (Ȳ .- sum(Y .* Ȳ))` per column.
+Backward of [`softmax!`](@ref), computed from the forward output `Y`.
 """
 function ∇softmax!(X̄::AbstractMatrix, Ȳ::AbstractMatrix, Y::AbstractMatrix)
     M, N = size(Y)

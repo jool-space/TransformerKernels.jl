@@ -138,13 +138,14 @@ end
     decode_attention!(O, Q, K, V; lengths, n_splits = 8, TILE_N = 64)
 
 Split-KV (Flash-Decoding) attention for single-token batched decode: one
-query vector per (head, sequence), with the KV cache streamed in `n_splits`
-parallel slices that are merged by log-sum-exp. Layouts (column-major):
+query vector per head and sequence, with the KV cache processed in `n_splits`
+parallel slices.
 
-    Q (Dk, Heads, Batch)    K (Dk, SeqLen_K, Heads_KV, Batch)
-    O (Dv, Heads, Batch)    V (Dv, SeqLen_K, Heads_KV, Batch)
-
-`lengths` is a `(Batch,)` `Int32` vector of valid KV lengths per sequence.
+  * `Q`: `(Dk, Heads, Batch)`
+  * `K`: `(Dk, SeqLen_K, Heads_KV, Batch)`
+  * `V`: `(Dv, SeqLen_K, Heads_KV, Batch)`
+  * `O`: `(Dv, Heads, Batch)`
+  * `lengths`: `(Batch,)`, valid KV length per sequence
 """
 function decode_attention!(O,
     Q, K, V;

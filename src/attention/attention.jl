@@ -223,17 +223,19 @@ end
 """
     attention!(O, Q, K, V, B = nothing; causal = false, kwargs...)
 
-Fused multi-head attention (FlashAttention-style forward), with layouts as in
-[`flex_attention!`](@ref) and GQA support. `B` is an optional additive bias
-`(SeqLen_K, SeqLen_Q, BIAS_HEADS, BIAS_BATCH)`, broadcast over heads/batch
-when those dims are smaller.
+Fused multi-head attention with an optional additive bias `B` (broadcast over
+heads/batch when those dims are smaller) and GQA support. For arbitrary
+variants use [`flex_attention!`](@ref).
+
+  * `Q`: `(Dk, SeqLen_Q, Heads, Batch)`
+  * `K`: `(Dk, SeqLen_K, Heads_KV, Batch)`
+  * `V`: `(Dv, SeqLen_K, Heads_KV, Batch)`
+  * `O`: `(Dv, SeqLen_Q, Heads, Batch)`
+  * `B`: `(SeqLen_K, SeqLen_Q, BiasHeads, BiasBatch)`
 
 Keywords: `M`/`L`, optional softmax-stat outputs for [`∇attention!`](@ref);
 `causal`; `input_pos`, absolute position of the first query; `k_lengths` /
-`q_lengths`, optional per-batch `Int32` valid lengths; `TILE_M`/`TILE_N`.
-
-This is the fixed-function special case; for arbitrary variants use
-[`flex_attention!`](@ref).
+`q_lengths`, optional per-batch valid lengths; `TILE_M`/`TILE_N`.
 """
 function attention!(O,
     Q, K, V, B=nothing;

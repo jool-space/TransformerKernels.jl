@@ -173,10 +173,12 @@ end
 """
     layer_norm!(Y, X, W, B; eps, Mean = nothing, Rstd = nothing, TILE_M = 256)
 
-Layer-normalize each column of `X` (size `(M, N)`, one instance per column):
-`Y[:, j] = (X[:, j] .- mean) .* rstd .* W .+ B` with `rstd = 1/√(var + eps)`.
-Pass `N`-vectors `Mean`/`Rstd` to record the per-column statistics, needed by
-[`∇layer_norm`](@ref).
+Layer-normalize each column of `X`: `y = (x - mean) * rstd * w + b` with
+`rstd = 1/√(var + eps)`.
+
+  * `X`, `Y`: `(M, N)`
+  * `W`, `B`: `(M,)`
+  * `Mean`, `Rstd`: `(N,)`, optional statistics outputs, needed by [`∇layer_norm`](@ref)
 """
 function layer_norm!(
     Y::AbstractMatrix,
@@ -199,8 +201,7 @@ end
     ∇layer_norm(Ȳ, X, W, B, Mean, Rstd; kwargs...) -> (X̄, W̄, B̄)
 
 Backward of [`layer_norm!`](@ref); the forward must be run with `Mean`/`Rstd`
-buffers. Weight and bias gradients are reduced in two stages over `N_GROUPS`
-lock-guarded partials.
+buffers.
 """
 function ∇layer_norm(
     Ȳ::AbstractMatrix, X::AbstractMatrix,

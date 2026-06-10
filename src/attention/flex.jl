@@ -183,12 +183,13 @@ end
     flex_attention!(O, Q, K, V; score_mod = NoOpScore(), mask_mod = FullMask(), kwargs...)
 
 FlexAttention forward: fused multi-head attention whose variant is given by
-two mods inlined into the kernel — `score_mod` rewrites the score tiles and
-`mask_mod` decides which (query, key) pairs attend (see mods.jl). Layouts
-(column-major):
+two mods — `score_mod` rewrites the attention scores and `mask_mod` decides
+which query-key pairs attend.
 
-    Q (Dk, SeqLen_Q, Heads, Batch)        O (Dv, SeqLen_Q, Heads, Batch)
-    K (Dk, SeqLen_K, Heads_KV, Batch)     V (Dv, SeqLen_K, Heads_KV, Batch)
+  * `Q`: `(Dk, SeqLen_Q, Heads, Batch)`
+  * `K`: `(Dk, SeqLen_K, Heads_KV, Batch)`
+  * `V`: `(Dv, SeqLen_K, Heads_KV, Batch)`
+  * `O`: `(Dv, SeqLen_Q, Heads, Batch)`
 
 `Heads` must be a multiple of `Heads_KV` (GQA).
 
@@ -197,7 +198,7 @@ Keywords:
     the softmax row max and sum, required by [`∇flex_attention!`](@ref).
   * `block_mask`: a precomputed [`BlockMask`](@ref) for data-dependent sparsity.
   * `block_sparse = true`: in-kernel block skipping for masks with analytic
-    geometry (causal, sliding-window, …).
+    geometry.
   * `input_pos = 0`: absolute position of the first query (KV-cache decoding).
   * `qk_scale = 1/√Dk`.
   * `TILE_M = 64`, `TILE_N = 64`: query/key tile sizes.

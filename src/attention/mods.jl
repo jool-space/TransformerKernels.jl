@@ -190,8 +190,7 @@ struct NoOpScore <: ScoreMod end
 """
     SoftCapScore(cap)
 
-Logit soft-capping: `s -> cap * tanh(s / cap)`, bounding scores to `±cap`
-(as in Gemma 2). `cap` receives no gradient in the backward.
+Logit soft-capping: `s -> cap * tanh(s / cap)`. `cap` receives no gradient.
 """
 struct SoftCapScore <: ScoreMod
     cap::Float32
@@ -212,10 +211,10 @@ end
 """
     BiasScore(bias)
 
-Additive attention bias with shape `(SeqLen_K, SeqLen_Q, BIAS_HEADS, BIAS_BATCH)`,
-broadcast over heads/batch via `mod1` when those dims are smaller. Indexed by
-LOCAL query position (`input_pos` does not shift it). Loaded block-wise via
-the lazy block positions — one coalesced load per tile, no per-element gather.
+Adds `bias` to the scores, broadcast over heads/batch when those dims are
+smaller. Indexed by local query position (`input_pos` does not shift it).
+
+  * `bias`: `(SeqLen_K, SeqLen_Q, BiasHeads, BiasBatch)`
 """
 struct BiasScore{A} <: ScoreMod
     bias::A
@@ -240,8 +239,7 @@ end
 """
     ComposeScore(a, b)
 
-Apply score mod `a`, then `b`. Construct with `b ∘ a`. The backward chains
-the VJPs in reverse, recomputing the intermediate score.
+Apply score mod `a`, then `b`. Construct with `b ∘ a`.
 """
 struct ComposeScore{A<:ScoreMod, B<:ScoreMod} <: ScoreMod
     a::A; b::B
@@ -423,10 +421,10 @@ analytic_useful(m::OrMask)  = analytic_useful(m.a) && analytic_useful(m.b)
     BlockMask
 
 Precomputed coarse block sparsity: per query block, the KV blocks holding any
-unmasked element, and which of those are fully unmasked (where the kernel
-skips `mask_mod`). Built with [`build_block_mask`](@ref); pass as `block_mask`
-to [`flex_attention!`](@ref). Use for masks with no analytic geometry
-(e.g. [`DocumentMask`](@ref)). No backward support.
+unmasked element, and which of those are fully unmasked. Built with
+[`build_block_mask`](@ref); pass as `block_mask` to [`flex_attention!`](@ref).
+For masks with no analytic geometry (e.g. [`DocumentMask`](@ref)).
+No backward support.
 """
 struct BlockMask
     count :: CuArray{Int32,1}    # [n_qb]        KV blocks to visit per q-block
@@ -440,7 +438,7 @@ end
 Build a [`BlockMask`](@ref) on the host from the predicate `keep(q, kv) -> Bool`
 (0-based absolute positions). `keep` must agree with the device `mask_mod` —
 e.g. `(q, kv) -> hmask(adapt(Array, mod), q, kv)` — and `TILE_M`/`TILE_N` must
-match the kernel launch. Memory is `O(⌈n_q/TILE_M⌉ ⋅ ⌈n_kv/TILE_N⌉)`.
+match the kernel launch.
 """
 function build_block_mask(keep, n_q, n_kv; TILE_M::Int=64, TILE_N::Int=64, input_pos::Int=0)
     nqb, nkb = cld(n_q, TILE_M), cld(n_kv, TILE_N)
