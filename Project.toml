@@ -11,8 +11,11 @@ Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CUDACore = "bd0ed864-bdfe-4181-a5ed-ce625a5fdea2"
 cuTile = "0dea8319-8c4a-4662-a73d-20234d115b9a"
 
+[sources]
+cuTile = {rev = "main", url = "https://github.com/JuliaGPU/cuTile.jl"}
+
 [compat]
 Adapt = "4"
 CUDACore = "6.1.1"
-cuTile = "0.3.1"
+cuTile = "0.3"
 julia = "1.11"
