@@ -96,6 +96,14 @@ function rms_norm_bwd_dw(
     return
 end
 
+"""
+    rms_norm!(Y, X, W; eps, offset = 0f0, Rstd = nothing, TILE_M = 256)
+
+RMS-normalize each column of `X` (size `(M, N)`, one instance per column):
+`Y[:, j] = X[:, j] .* rstd .* (W .+ offset)` with
+`rstd = 1/√(mean(X[:, j].^2) + eps)`. Pass an `N`-vector `Rstd` to record
+`rstd` per column, needed by [`∇rms_norm`](@ref).
+"""
 function rms_norm!(
     Y::AbstractMatrix, X::AbstractMatrix, W::AbstractVector;
     Rstd = nothing, eps, offset = 0.0f0, TILE_M = 256,
@@ -109,6 +117,13 @@ function rms_norm!(
     return
 end
 
+"""
+    ∇rms_norm(Ȳ, X, W, Rstd; offset = 0f0, kwargs...) -> (X̄, W̄)
+
+Backward of [`rms_norm!`](@ref); the forward must be run with an `Rstd`
+buffer, and `offset` must match. The weight gradient is reduced in two
+stages over `N_GROUPS` lock-guarded partials.
+"""
 function ∇rms_norm(
     Ȳ::AbstractMatrix, X::AbstractMatrix,
     W::AbstractVector, Rstd::AbstractVector;

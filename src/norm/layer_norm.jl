@@ -170,6 +170,14 @@ function layer_norm_bwd_dwdb(
     return
 end
 
+"""
+    layer_norm!(Y, X, W, B; eps, Mean = nothing, Rstd = nothing, TILE_M = 256)
+
+Layer-normalize each column of `X` (size `(M, N)`, one instance per column):
+`Y[:, j] = (X[:, j] .- mean) .* rstd .* W .+ B` with `rstd = 1/√(var + eps)`.
+Pass `N`-vectors `Mean`/`Rstd` to record the per-column statistics, needed by
+[`∇layer_norm`](@ref).
+"""
 function layer_norm!(
     Y::AbstractMatrix,
     X::AbstractMatrix, W::AbstractVector, B::AbstractVector;
@@ -187,6 +195,13 @@ function layer_norm!(
     return
 end
 
+"""
+    ∇layer_norm(Ȳ, X, W, B, Mean, Rstd; kwargs...) -> (X̄, W̄, B̄)
+
+Backward of [`layer_norm!`](@ref); the forward must be run with `Mean`/`Rstd`
+buffers. Weight and bias gradients are reduced in two stages over `N_GROUPS`
+lock-guarded partials.
+"""
 function ∇layer_norm(
     Ȳ::AbstractMatrix, X::AbstractMatrix,
     W::AbstractVector, B::AbstractVector,

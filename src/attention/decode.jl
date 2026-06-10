@@ -18,7 +18,7 @@ export decode_attention!
 #   K (Dk, SeqLen_K, Heads_KV, Batch)
 #   V (Dv, SeqLen_K, Heads_KV, Batch)
 #   O (Dv, Heads, Batch)
-#   k_lengths (Batch,)                      — valid KV length per sequence
+#   lengths (Batch,)                      — valid KV length per sequence
 #
 # Partials (allocated by the host wrapper):
 #   O_partial (Dv, Heads, Batch, N_SPLITS)  — normalized per-split output
@@ -30,7 +30,7 @@ function mha_decode_split_fwd(
     O_partial::TileArray4,
     M_partial::TileArray3{Float32},
     L_partial::TileArray3{Float32},
-    k_lengths::TileVector{Int32},
+    lengths::TileVector{Int32},
     qk_scale::Float32,
     Heads_KV::Int,
     Tc::Type, Tacc::Type,
@@ -43,14 +43,14 @@ function mha_decode_split_fwd(
     hb = ct.bid(2)
     b, hₖ = fldmod1(hb, Heads_KV)       # b = sequence, hₖ = kv-head (fast index)
 
-    k_len = k_lengths[b]
+    len = lengths[b]
 
     # KV range [kv_start, kv_stop) owned by this split, in tile units.
     # SPLIT_SIZE is a multiple of TILE_N, so kv_start is tile-aligned.
-    kv_stop = min(s * SPLIT_SIZE, k_len)
+    kv_stop = min(s * SPLIT_SIZE, len)
     j_lo = fld((s - 1i32) * SPLIT_SIZE, TILE_N) + 1i32
     j_hi = cld(kv_stop, TILE_N)
-    mask_start = fld(k_len, TILE_N)     # tiles beyond this need a length mask
+    mask_start = fld(len, TILE_N)     # tiles beyond this need a length mask
 
     offs_n_tile = ct.arange(TILE_N) .- 1i32
 
@@ -68,7 +68,7 @@ function mha_decode_split_fwd(
 
         if j > mask_start
             offs_n = (j - 1i32) * TILE_N .+ offs_n_tile
-            mask = offs_n .< k_len
+            mask = offs_n .< len
             s_qk = ifelse.(mask, s_qk, Tacc(-Inf32))
         end
 
@@ -134,9 +134,21 @@ function mha_decode_combine(
     return
 end
 
+"""
+    decode_attention!(O, Q, K, V; lengths, n_splits = 8, TILE_N = 64)
+
+Split-KV (Flash-Decoding) attention for single-token batched decode: one
+query vector per (head, sequence), with the KV cache streamed in `n_splits`
+parallel slices that are merged by log-sum-exp. Layouts (column-major):
+
+    Q (Dk, Heads, Batch)    K (Dk, SeqLen_K, Heads_KV, Batch)
+    O (Dv, Heads, Batch)    V (Dv, SeqLen_K, Heads_KV, Batch)
+
+`lengths` is a `(Batch,)` `Int32` vector of valid KV lengths per sequence.
+"""
 function decode_attention!(O,
     Q, K, V;
-    k_lengths,
+    lengths,
     tensorcore = tensorcore_type(eltype(Q)),
     accumulate = accumulate_type(tensorcore),
     TILE_N = 64,
@@ -167,7 +179,7 @@ function decode_attention!(O,
 
     @cutile(blocks=(n_splits, Heads_KV * Batch),
         mha_decode_split_fwd(
-            Q, K, V, O_partial, M_partial, L_partial, k_lengths,
+            Q, K, V, O_partial, M_partial, L_partial, lengths,
             qk_scale,
             Heads_KV,
             tensorcore, accumulate,

@@ -181,7 +181,7 @@ function mha_bwd(
 
             if B isa TileArray
                 pair = ct.load(B, (j, i, hᵇ, bᵇ), (TILE_N, TILE_M))
-                s = s .+ (pair → Tacc1)
+                s = s .+ (pair → Tacc)
             end
 
             if CAUSAL || pad_mask_needed
@@ -220,18 +220,34 @@ function mha_bwd(
     return
 end
 
+"""
+    attention!(O, Q, K, V, B = nothing; causal = false, kwargs...)
+
+Fused multi-head attention (FlashAttention-style forward), with layouts as in
+[`flex_attention!`](@ref) and GQA support. `B` is an optional additive bias
+`(SeqLen_K, SeqLen_Q, BIAS_HEADS, BIAS_BATCH)`, broadcast over heads/batch
+when those dims are smaller.
+
+Keywords: `M`/`L`, optional softmax-stat outputs for [`∇attention!`](@ref);
+`causal`; `input_pos`, absolute position of the first query; `k_lengths` /
+`q_lengths`, optional per-batch `Int32` valid lengths; `TILE_M`/`TILE_N`.
+
+This is the fixed-function special case; for arbitrary variants use
+[`flex_attention!`](@ref).
+"""
 function attention!(O,
     Q, K, V, B=nothing;
     M = nothing,
     L = nothing,
     causal = false,
+    input_pos = 0,
     k_lengths = nothing,
     q_lengths = nothing,
     tensorcore = tensorcore_type(eltype(Q)),
     accumulate = accumulate_type(tensorcore),
     TILE_M = 64,
     TILE_N = 64,
-) 
+)
     Dq, SeqLen_Q, Heads, Batch = size(Q)
     Dk, SeqLen_K, Heads_KV, Batch_K = size(K)
     Dv, SeqLen_V, Heads_V, Batch_V = size(V)
@@ -242,7 +258,6 @@ function attention!(O,
 
     query_group_size = Heads ÷ Heads_KV
     qk_scale = Float32(1 / sqrt(Dk))
-    input_pos = Int32(0)
     Dk_pow2 = nextpow(2, Dk)
     Dv_pow2 = nextpow(2, Dv)
 
@@ -252,7 +267,7 @@ function attention!(O,
     @cutile(blocks=(cld(SeqLen_Q, TILE_M), Heads * Batch),
         mha_fwd(
             Q, K, V, O, M, L, B, k_lengths, q_lengths,
-            qk_scale, input_pos, Heads,
+            qk_scale, Int32(input_pos), Heads,
             tensorcore, accumulate,
             Constant(Dk_pow2),
             Constant(Dv_pow2),
@@ -268,15 +283,24 @@ function attention!(O,
     return
 end
 
+"""
+    ∇attention!(Q̄, K̄, V̄, B̄, Ō, Q, K, V, B, O, M, L; causal, kwargs...)
+
+Backward of [`attention!`](@ref): given the output gradient `Ō`, overwrite
+`Q̄`/`K̄`/`V̄` (and `B̄`, unless `nothing`) with the input gradients. The forward
+must be run with `M`/`L` buffers, and `causal`/`input_pos` must match.
+"""
 function ∇attention!(
     Q̄, K̄, V̄, B̄, Ō,
     Q, K, V, B, O, M, L;
     causal,
+    input_pos = 0,
     k_lengths = nothing,
     q_lengths = nothing,
     tensorcore = tensorcore_type(eltype(Q)),
     accumulate = accumulate_type(tensorcore),
-    verify = nothing,
+    TILE_M = 64,
+    TILE_N = 64,
 )
     Dq, SeqLen_Q, Heads, Batch = size(Q)
     Dk, SeqLen_K, Heads_KV, Batch_K = size(K)
@@ -291,7 +315,6 @@ function ∇attention!(
 
     query_group_size = Heads ÷ Heads_KV
     qk_scale = Float32(1 / sqrt(Dk))
-    input_pos = Int32(0)
     Dk_pow2 = nextpow(2, Dk)
     Dv_pow2 = nextpow(2, Dv)
 
@@ -305,7 +328,7 @@ function ∇attention!(
         mha_bwd_preprocess(
             Ō, O, Ō′, L, Δ,
             Constant(Heads),
-            Constant(Dv),
+            Constant(Dv_pow2),
             Constant(32)
         )
     )
@@ -317,7 +340,7 @@ function ∇attention!(
             B,
             isnothing(B̄) ? B̄ : fill!(B̄, 0),
             k_lengths, q_lengths,
-            qk_scale, input_pos, Heads,
+            qk_scale, Int32(input_pos), Heads,
             tensorcore, accumulate,
             Constant(Dk_pow2),
             Constant(Dv_pow2),
@@ -328,25 +351,6 @@ function ∇attention!(
             Constant(bias_heads),
             Constant(bias_batch),
             Constant(bias_atomic),
-        )
-    )
-
-        ct.@autotune(
-        key = (T, Dk_pow2, Dv_pow2),
-        space = (TILE_M=(32, 64, 128, 256), TILE_N=(32, 64, 128, 256), occupancy=(1, 2, 4, 8)),
-        blocks = (cld(SeqLen_Q, $TILE_M), Heads * Batch),
-        mha_fwd(
-            Q, K, V, O, M, L, B, k_lengths, q_lengths,
-            qk_scale, input_pos, Heads,
-            tensorcore, accumulate,
-            Constant(Dk_pow2),
-            Constant(Dv_pow2),
-            Constant($TILE_M),
-            Constant($TILE_N),
-            Constant(query_group_size),
-            Constant(causal),
-            Constant(bias_heads),
-            Constant(bias_batch),
         )
     )
 
