@@ -5,21 +5,21 @@
 #   Q (Dk, Heads, Batch)              — one query vector per (head, sequence)
 #   K (Dk, SeqLen, Heads_KV, Batch)
 #   V (Dv, SeqLen, Heads_KV, Batch)
-#   k_lengths (Batch,)                — valid KV length per sequence
+#   lengths (Batch,)                — valid KV length per sequence
 #   O (Dv, Heads, Batch)
 #
 # Query head h attends to KV head hₖ = (h-1) ÷ G + 1 (G consecutive query heads
 # share one KV head — the same fld1 mapping the kernel uses). Computed in
 # Float64 so the tolerance budget is spent on the kernel's reduced precision,
 # not the reference.
-function decode_reference(Q, K, V, k_lengths)
+function decode_reference(Q, K, V, lengths)
     Dk, Heads, Batch = size(Q)
     Dv, _, Heads_KV, _ = size(V)
     G = Heads ÷ Heads_KV
     scale = 1 / sqrt(Dk)
     O = zeros(Float64, Dv, Heads, Batch)
     for b in 1:Batch, h in 1:Heads
-        L = Int(k_lengths[b])
+        L = Int(lengths[b])
         L == 0 && continue                      # empty cache → zero output
         hₖ = (h - 1) ÷ G + 1
         q = Float64.(@view Q[:, h, b])
@@ -36,15 +36,15 @@ function decode_reference(Q, K, V, k_lengths)
 end
 
 # Run the kernel for host inputs and bring the result back to the host.
-function gpu_decode(Q, K, V, k_lengths; T = Float32, kwargs...)
+function gpu_decode(Q, K, V, lengths; T = Float32, kwargs...)
     Dv = size(V, 1)
     _, Heads, Batch = size(Q)
     dQ = CuArray(T.(Q))
     dK = CuArray(T.(K))
     dV = CuArray(T.(V))
     dO = CuArray(zeros(T, Dv, Heads, Batch))
-    dlen = CuArray(Int32.(collect(k_lengths)))
-    decode_attention!(dO, dQ, dK, dV; k_lengths = dlen, kwargs...)
+    dlen = CuArray(Int32.(collect(lengths)))
+    decode_attention!(dO, dQ, dK, dV; lengths = dlen, kwargs...)
     return Array(dO)
 end
 
@@ -65,7 +65,7 @@ const DECODE_RTOL = 3f-2
 @testset "decode_attention!" begin
     @testset "vs CPU reference" begin
         rng = MersenneTwister(0)
-        # name => (dims, k_lengths, n_splits, TILE_N)
+        # name => (dims, lengths, n_splits, TILE_N)
         cases = [
             # MHA (group size 1), cache fully used, exactly two tiles.
             ("mha, full, 4 splits",
@@ -97,10 +97,10 @@ const DECODE_RTOL = 3f-2
                 (Dk=64, Dv=64, Heads=4, Heads_KV=2, SeqLen=96, Batch=2),
                 [96, 50], 16, 64),
         ]
-        for (name, dims, k_lengths, n_splits, TILE_N) in cases
+        for (name, dims, lengths, n_splits, TILE_N) in cases
             Q, K, V = decode_inputs(rng; dims...)
-            O_ref = decode_reference(Q, K, V, k_lengths)
-            O_gpu = gpu_decode(Q, K, V, k_lengths; n_splits, TILE_N)
+            O_ref = decode_reference(Q, K, V, lengths)
+            O_gpu = gpu_decode(Q, K, V, lengths; n_splits, TILE_N)
             @testset "$name" begin
                 @test size(O_gpu) == size(O_ref)
                 @test isapprox(O_gpu, O_ref; atol = DECODE_ATOL, rtol = DECODE_RTOL)
@@ -115,10 +115,10 @@ const DECODE_RTOL = 3f-2
         rng = MersenneTwister(1)
         Q, K, V = decode_inputs(rng;
             Dk=64, Dv=64, Heads=8, Heads_KV=2, SeqLen=500, Batch=3)
-        k_lengths = [500, 333, 64]
-        base = gpu_decode(Q, K, V, k_lengths; n_splits = 1, TILE_N = 64)
+        lengths = [500, 333, 64]
+        base = gpu_decode(Q, K, V, lengths; n_splits = 1, TILE_N = 64)
         for n_splits in (2, 4, 8, 16)
-            split = gpu_decode(Q, K, V, k_lengths; n_splits, TILE_N = 64)
+            split = gpu_decode(Q, K, V, lengths; n_splits, TILE_N = 64)
             @test isapprox(split, base; atol = 1f-3, rtol = 1f-3)
         end
     end
