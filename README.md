@@ -8,3 +8,11 @@ Transformer building blocks as GPU kernels written in
 [cuTile.jl](https://github.com/JuliaGPU/cuTile.jl), NVIDIA's tile-based
 programming model for Julia: fused multi-head attention, split-KV decoding,
 softmax, and layer/RMS normalization, with backward passes throughout.
+
+## Installation
+
+```julia
+using Pkg
+Registry.add(url="https://registry.jool.space")
+Pkg.add("TransformerKernels")
+```
