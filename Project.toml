@@ -1,6 +1,6 @@
 name = "TransformerKernels"
 uuid = "74738147-8e3d-4f44-a0a4-d3d1342265a2"
-version = "1.0.0-DEV"
+version = "0.1.0"
 authors = ["AntonOresten <antonoresten@proton.me> and contributors"]
 
 [workspace]
