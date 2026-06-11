@@ -6,16 +6,16 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: patch | minor | major | x.y.z | current
+        description: current | patch | minor | major | x.y.z
         type: string
-        default: patch
+        default: current
 
 permissions:
   contents: write
 
 jobs:
   release:
-    uses: jool-space/registry/.github/workflows/register.yml@v1
+    uses: jool-space/registry/.github/workflows/register.yml@main
     with:
       bump: ${{ inputs.bump }}
     secrets: inherit
