@@ -8,3 +8,4 @@ TransformerKernels = "74738147-8e3d-4f44-a0a4-d3d1342265a2"
 
 [compat]
 Adapt = "4.6.1"
+CUDA = "6.2.0"

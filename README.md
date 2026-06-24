@@ -4,6 +4,9 @@
 [![Build Status](https://github.com/jool-space/TransformerKernels.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jool-space/TransformerKernels.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/jool-space/TransformerKernels.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/jool-space/TransformerKernels.jl)
 
+> [!NOTE]
+> This package is discontinued, in favor of [Tylo.jl](https://github.com/jool-space/Tylo.jl).
+
 Transformer building blocks as GPU kernels written in
 [cuTile.jl](https://github.com/JuliaGPU/cuTile.jl), NVIDIA's tile-based
 programming model for Julia: fused multi-head attention, split-KV decoding,
